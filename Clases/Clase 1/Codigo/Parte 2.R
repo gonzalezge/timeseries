@@ -107,7 +107,7 @@ IPP_ts = ts(as.numeric(IPP$IPP),start= Periodo_inicial, end = Periodo_Final, fre
 plot(IPP_ts)
 
 ############ ----------------- Reporte Grupo exito ------- ###########
-Exito = as.data.frame(read.csv('/Volumes/GoogleDrive/My Drive/Uniandes Series de tiempo/Clase 1/Codigo/Datos_exito.csv'))
+Exito = as.data.frame(read.csv('Datos_exito.csv'))
 Ingresos_exito_log_ts = ts(log(as.numeric(as.numeric(Exito[,"iexito"]))),start = c(year(Fecha_inicial),quarter(Fecha_inicial)) ,end = c(year(Fecha_final),quarter(Fecha_final)), frequency = 4) 
 ##### --------- Regresión 1: Logaritmo de los ingresos de Éxito Trimestrales --------- #####
 Reg_ingresos_exito_ts = tslm(Ingresos_exito_log_ts~Empleo_ts+ICC_ts+IPP_ts)
