@@ -1,0 +1,113 @@
+###### --------------------- Ejercicio 1 ----------------- ############ 
+####### ----------- Limpiar ambiente ------- ###### 
+rm(list = ls())
+##### --------- Path: automatico  --------- #####
+path <<- gsub(rstudioapi::getActiveDocumentContext()$path,pattern = "/Ejercicio 1.+",replacement = "")
+setwd(paste0(path,'/Ejercicio 1'))
+##### -------- librerias ------- ###### 
+librerias <- c("readxl","ggplot2","scales",'timeSeries','timeSeries','forecast','rugarch','fBasics','moments','tseries','fPortfolio','data.table')
+
+###### ----- Instalacion liberarias ------ ####
+if(length(setdiff(librerias, rownames(installed.packages()))) > 0){
+  install.packages(setdiff(librerias, rownames(installed.packages())))}
+invisible(sapply(librerias, require, character.only = TRUE,quietly = TRUE))
+
+
+####### ----------- Activo 1: Amazon ------------- #########
+Amazon = get.hist.quote(instrument = "AMZN", 
+                      start=as.Date("2005-01-04"), 
+                      end=as.Date(Sys.Date()), quote = "Close")
+######## -------- Gráfico --------- #######
+plot(Amazon, col="darkgreen", xlab="Fecha", ylab="Close"); title(main="Evolución Amazon")
+
+####### ----------- Activo 2: Googlee ------------- #########
+Google = get.hist.quote(instrument = "GOOGL", 
+                       start=as.Date("2005-01-04"), 
+                       end=as.Date(Sys.Date()), quote = "Close")
+######## -------- Gráfico --------- #######
+plot(Google, col="red", xlab="Fecha", ylab="Close"); title(main="Evolución Googlee")
+
+######### ------------------------ Consolidacion 2 activos ------------------ ###############
+Cartera <- merge(Amazon,Google,all = FALSE)  
+
+####### ´-------- Retornos lineales ------- ###### 
+Retornos_cartera = apply(Cartera, 2, function(x){returns(x,method='simple')})[-1,]
+Retornos_cartera = as.data.frame(Retornos_cartera)
+colnames(Retornos_cartera) = c('Amazon','Google')
+
+###### ---------- Calcular frontera: Forma 1 -------- ##########
+# I) Retornos esperados de los dos activos
+er_Amazon <- mean(Retornos_cartera$Amazon)
+er_Google <- mean(Retornos_cartera$Google)
+
+# II) Riesgo Desviacion estandar como medida de riesgo
+sd_Amazon <- sd(Retornos_cartera$Amazon)
+sd_Google <- sd(Retornos_cartera$Google)
+
+# III) covarianza
+cov_Amazon_Google <- cov(Retornos_cartera$Amazon, Retornos_cartera$Google)
+
+# se crean 1000 pesos de portafolios (omegas)
+x_pesos <- seq(from = 0, to = 1, length.out = 1000)
+
+# se crea un dataframe que contiene los pesos de los activos 
+pesos_portafolio <- data.frame(w_Amazon = x_pesos,w_Google = 1 - x_pesos)
+
+
+#### -------- Calcular los retornos esperados para los 1000 portafolios posibles ---------- ###### 
+er_portafolio = pesos_portafolio$w_Amazon*er_Amazon + pesos_portafolio$w_Google*er_Google
+####### --------- Varianza Manera 1 --------- #######
+sd_portafolio = sqrt(pesos_portafolio$w_Amazon^2*sd_Amazon^2 + pesos_portafolio$w_Google^2*sd_Google^2 + 2*pesos_portafolio$w_Amazon*pesos_portafolio$w_Google*cov_Amazon_Google)
+
+####### --------- Varianza Manera 2 --------- #######
+Covarianza = cov(Retornos_cartera)
+pesos_portafolio_matrix = as.matrix(pesos_portafolio)
+Varianza = sapply(c(1:1000), function(x){(pesos_portafolio_matrix[x,]%*%Covarianza)%*%(pesos_portafolio_matrix[x,])})
+sd_segunda_forma = sqrt(Varianza)
+
+### ----------- Consolidación de resultados ---------- ########
+Portafolio_resultados = data.frame(er_p = er_portafolio,sd_p = sd_portafolio,w_Amazon=pesos_portafolio$w_Amazon,w_Google = pesos_portafolio$w_Amazon)
+######### ----------- Grafico resultados ---------- #########
+ggplot() +
+  geom_point(data = Portafolio_resultados, aes(x = sd_p, y = er_p, color = w_Amazon)) +
+  geom_point(data = data.table(sd = c(sd_Amazon, sd_Google), mean = c(er_Amazon, er_Google)),
+             aes(x = sd, y = mean), color = "red", size = 3, shape = 18) + theme_bw() + ggtitle("Portafolios posibles") +
+  xlab("Volatilidad") + ylab("Retornos esperados") +
+  scale_y_continuous(label = percent, limits = c(0, max(Portafolio_resultados$er_p) * 1.2)) +
+  scale_x_continuous(label = percent, limits = c(0, max(Portafolio_resultados$sd_p) * 1.2)) +
+  scale_color_continuous(name = expression(omega[x]), labels = percent)
+
+####---------- Portafolio de minima varianza -------- ########## 
+pesos_portafolio[which.min(Varianza),]
+
+
+###### ---------- Calcular frontera: Forma 2 -------- ##########
+###### ------- Especificacion del portafolio ------ ###### 
+espcartera<-portfolioSpec()
+###### ------- Puntos de la frontera ------ ###### 
+setNFrontierPoints(espcartera) <- 1000
+###### ------- Restricciones: Positivas ------ ###### 
+constraints="LongOnly"
+###### ------- Construccion de la frontera ------ ###### 
+Frontera <- portfolioFrontier(as.timeSeries(Retornos_cartera),spec=espcartera,constraints )
+er_p_auto = Frontera@portfolio@portfolio$targetReturn[,'mean']
+sd_p_auto = Frontera@portfolio@portfolio$targetRisk[,"Sigma"]
+w_Amazon_auto = Frontera@portfolio@portfolio$weights[,'Amazon']
+w_Google_auto = Frontera@portfolio@portfolio$weights[,'Google']
+
+############ ---------- Consolidacion de resultados ---------- ###### 
+Portafolio_resultados_auto = data.frame(er_p = er_p_auto,sd_p = sd_p_auto,w_Amazon=w_Amazon_auto,w_Google = w_Google_auto)
+######### ----------- Grafico resultados ---------- #########
+ggplot() +
+  geom_point(data = Portafolio_resultados_auto, aes(x = sd_p_auto, y = er_p_auto, color = w_Amazon_auto)) +
+  geom_point(data = data.table(sd = c(sd_Amazon, sd_Google), mean = c(er_Amazon, er_Google)),
+             aes(x = sd, y = mean), color = "red", size = 3, shape = 18) + theme_bw() + ggtitle("Portafolios posibles") +
+  xlab("Volatilidad") + ylab("Retornos esperados") +
+  scale_y_continuous(label = percent, limits = c(0, max(Portafolio_resultados_auto$er_p) * 1.2)) +
+  scale_x_continuous(label = percent, limits = c(0, max(Portafolio_resultados_auto$sd_p) * 1.2)) +
+  scale_color_continuous(name = expression(omega[x]), labels = percent)
+
+
+efPortfolio <- efficientPortfolio(as.timeSeries(Retornos_cartera),espcartera,constraints)
+ 
+
